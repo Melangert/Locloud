@@ -16,9 +16,13 @@ Storage usage tracking
 
 ## How to install
 Download the tar file
+
 cd into the download directory then:
+
 cd Locloud
+
 chmod +x run.sh
+
 ./run.sh
 
 ## Notice
