@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=LoCloud
+Comment=Local Cloud App
+Exec=/home/kevin/Documents/Locloud/run.sh
+Icon=utilities-terminal
+Terminal=true
+Type=Application
+Categories=Development;
