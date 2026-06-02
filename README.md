@@ -29,7 +29,7 @@ chmod +x run.sh
 This project is still under development and will receive many future updates.
 
 
-##
+## Credits
 Used AI for debugging and vite config.
 
 
