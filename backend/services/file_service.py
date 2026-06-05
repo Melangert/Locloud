@@ -1,3 +1,4 @@
+import shutil
 import os
 from sqlalchemy.orm import Session
 from db.models import File
@@ -15,8 +16,8 @@ def save_file(db: Session, file: UploadFile, folder_id: str, owner: str) -> File
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
     with open(abs_path, "wb") as f:
-        while chunk := file.file.read(32 * 1024):
-            f.write(chunk)
+        while chunk := file.file.read(64 * 1024):
+           f.write(chunk)
 
     size = os.path.getsize(abs_path)
 
@@ -67,3 +68,47 @@ def rename_file(db: Session, file_id: str, new_name: str, owner: str) -> File:
     db.commit()
     db.refresh(file)
     return file
+
+CHUNK_DIR = os.path.join(settings.UPLOAD_DIR, "_chunks")
+
+def start_chunked_upload(db: Session, filename: str, folder_id: str, owner: str):
+    file_id = str(uuid.uuid4())
+    ext = os.path.splitext(filename)[1]
+    relative_path = f"{owner}/{file_id}{ext}"
+    db_file = File(
+        id=file_id,
+        name=filename,
+        path=relative_path,
+        size=0,
+        folder_id=folder_id or None,
+        owner=owner
+    )
+    db.add(db_file)
+    db.commit()
+    db.refresh(db_file)
+    return db_file
+
+def save_chunk(file_id: str, chunk_index: int, file: UploadFile, owner: str):
+    chunk_dir = os.path.join(CHUNK_DIR, file_id)
+    os.makedirs(chunk_dir, exist_ok=True)
+    chunk_path = os.path.join(chunk_dir, str(chunk_index))
+    with open(chunk_path, "wb") as f:
+        while chunk := file.file.read(32 * 1024):
+            f.write(chunk)
+
+def finish_chunked_upload(db: Session, file_id: str, total_chunks: int, owner: str):
+    db_file = db.query(File).filter(File.id == file_id, File.owner == owner).first()
+    if not db_file:
+        raise Exception("File not found")
+    abs_path = os.path.join(settings.UPLOAD_DIR, db_file.path)
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+    with open(abs_path, "wb") as out:
+        for i in range(total_chunks):
+            chunk_path = os.path.join(CHUNK_DIR, file_id, str(i))
+            with open(chunk_path, "rb") as c:
+                shutil.copyfileobj(c, out)
+    shutil.rmtree(os.path.join(CHUNK_DIR, file_id))
+    db_file.size = os.path.getsize(abs_path)
+    db.commit()
+    db.refresh(db_file)
+    return db_file
