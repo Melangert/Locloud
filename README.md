@@ -26,7 +26,12 @@ chmod +x run.sh
 
 or 
 ```bash
-git clone
+git clone https://github.com/Melangert/Locloud.git
+cd Locloud
+
+chmod +x run.sh
+
+./run.sh
 
 
 ```
