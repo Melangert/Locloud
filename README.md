@@ -2,6 +2,7 @@
 Local cloud service for light devices like a Raspberry Pi (Pi support planned but does not work as intended as of now)
 
 Node.js reccomended
+Default password and user is admin admin
 
 ![LoCloud Screenshot](image.png)
 
