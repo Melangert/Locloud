@@ -15,7 +15,11 @@ def list_files(folder_id: str = None, db: Session = Depends(get_db), user: str =
 
 @router.post("/upload")
 def upload_file(folder_id: str = None, file: UploadFile = File(...), db: Session = Depends(get_db), user: str = Depends(get_current_user)):
-    return file_service.save_file(db, file, folder_id, user)
+    try:
+        return file_service.save_file(db, file, folder_id, user)
+    except Exception as e:
+        print(f"Upload error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/download/{file_id}")
 def download_file(file_id: str, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
