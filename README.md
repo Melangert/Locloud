@@ -24,6 +24,13 @@ chmod +x run.sh
 
 ./run.sh
 
+or 
+```bash
+git clone
+
+
+```
+
 ## Notice
 This project is still under development and will receive many future updates.
 
