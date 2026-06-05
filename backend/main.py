@@ -28,4 +28,4 @@ def health():
     return {"status": "ok"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, timeout_keep_alive=600, h11_max_incomplete_event_size=5_000_000_000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, timeout_keep_alive=600, h11_max_incomplete_event_size=10_000_000_000)
