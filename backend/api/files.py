@@ -6,6 +6,8 @@ from services import file_service
 from api.auth import get_current_user
 from config import settings
 import os
+import shutil
+from fastapi import Form
 
 router = APIRouter()
 
@@ -13,13 +15,22 @@ router = APIRouter()
 def list_files(folder_id: str = None, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     return file_service.get_files(db, folder_id, user)
 
+@router.post("/upload/start")
+def start_upload(filename: str, folder_id: str = None, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+    return file_service.start_chunked_upload(db, filename, folder_id, user)
+
+@router.post("/upload/chunk")
+async def upload_chunk(file_id: str, chunk_index: int, file: UploadFile = File(...), user: str = Depends(get_current_user)):
+    file_service.save_chunk(file_id, chunk_index, file, user)
+    return {"ok": True}
+
+@router.post("/upload/finish")
+def finish_upload(file_id: str, total_chunks: int, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+    return file_service.finish_chunked_upload(db, file_id, total_chunks, user)
+
 @router.post("/upload")
 def upload_file(folder_id: str = None, file: UploadFile = File(...), db: Session = Depends(get_db), user: str = Depends(get_current_user)):
-    try:
-        return file_service.save_file(db, file, folder_id, user)
-    except Exception as e:
-        print(f"Upload error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+    return file_service.save_file(db, file, folder_id, user)
 
 @router.get("/download/{file_id}")
 def download_file(file_id: str, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
@@ -43,3 +54,5 @@ def rename_file(file_id: str, body: dict, db: Session = Depends(get_db), user: s
     if not f:
         raise HTTPException(status_code=404, detail="File not found")
     return f
+
+
