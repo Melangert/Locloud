@@ -19,14 +19,19 @@ Storage usage tracking
 Download the tar file
 
 cd into the download directory then:
+```bash
+tar -xzf locloud.tar.gz
 
 cd Locloud
 
 chmod +x run.sh
 
 ./run.sh
+```
 
-or 
+or
+
+
 ```bash
 git clone https://github.com/Melangert/Locloud.git
 cd Locloud
