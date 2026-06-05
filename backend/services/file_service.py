@@ -1,5 +1,4 @@
 import os
-import shutil
 from sqlalchemy.orm import Session
 from db.models import File
 from config import settings
@@ -16,7 +15,8 @@ def save_file(db: Session, file: UploadFile, folder_id: str, owner: str) -> File
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
     with open(abs_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        while chunk := file.file.read(1024 * 1024):
+            f.write(chunk)
 
     size = os.path.getsize(abs_path)
 
