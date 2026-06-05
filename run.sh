@@ -14,7 +14,7 @@ if [ ! -d "venv" ]; then
 fi
 source venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000 &
+uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 300 --limit-max-requests 1000 &
 BACKEND_PID=$!
 
 # ---------------- frontend ----------------
