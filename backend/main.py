@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from db.database import init_db
 from api import auth, files, folders, storage
+import uvicorn
 
 app = FastAPI(title="Locloud")
 
@@ -25,3 +26,6 @@ def startup():
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000, timeout_keep_alive=600, h11_max_incomplete_event_size=5_000_000_000)
