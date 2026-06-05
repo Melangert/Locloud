@@ -1,10 +1,7 @@
-
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from db.database import init_db
 from api import auth, files, folders, storage
-from config import settings
 
 app = FastAPI(title="Locloud")
 
