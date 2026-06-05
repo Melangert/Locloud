@@ -1,6 +1,7 @@
 #!/bin/bash
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR/backend"
+mkdir -p "$ROOT_DIR/backend/uploads"
 
 if [ ! -d "venv" ]; then
   python3 -m venv venv
