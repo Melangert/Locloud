@@ -6,25 +6,48 @@ export default function UploadButton({ currentFolder, onUpload }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const inputRef = useRef()
+const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
 
-  async function handleChange(e) {
-    const file = e.target.files[0]
-    if (!file) return
-    setUploading(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress(p => Math.min(p + 10, 90))
-    }, 100)
-    await uploadFile(file, currentFolder)
-    clearInterval(interval)
-    setProgress(100)
-    setTimeout(() => {
-      setUploading(false)
-      setProgress(0)
-      onUpload()
-    }, 500)
-    e.target.value = ''
+async function handleChange(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  setUploading(true)
+  setProgress(0)
+
+  const token = localStorage.getItem('token')
+  const headers = { Authorization: `Bearer ${token}` }
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+
+  // start
+  const startRes = await fetch(`/api/files/upload/start?filename=${encodeURIComponent(file.name)}&folder_id=${currentFolder || ''}`, {
+    method: 'POST', headers
+  })
+  const { id: fileId } = await startRes.json()
+
+  // upload chunks
+  for (let i = 0; i < totalChunks; i++) {
+    const blob = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+    const form = new FormData()
+    form.append('file', blob, file.name)
+    await fetch(`/api/files/upload/chunk?file_id=${fileId}&chunk_index=${i}`, {
+      method: 'POST', headers, body: form
+    })
+    setProgress(Math.round(((i + 1) / totalChunks) * 95))
   }
+
+  // finish
+  await fetch(`/api/files/upload/finish?file_id=${fileId}&total_chunks=${totalChunks}`, {
+    method: 'POST', headers
+  })
+
+  setProgress(100)
+  setTimeout(() => {
+    setUploading(false)
+    setProgress(0)
+    onUpload()
+  }, 500)
+  e.target.value = ''
+}
 
   return (
     <div>
