@@ -1,9 +1,10 @@
 #!/bin/bash
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 if [ ! -f "$ROOT_DIR/backend/.env" ]; then
   bash "$ROOT_DIR/setup.sh"
 fi
->>>>>>> b847488 (add setup.sh)
+
 LOCAL_IP=$(hostname -I | awk '{print $1}')
 
 # ---------------- backend ----------------
@@ -27,8 +28,4 @@ echo "Access locloud at: http://$LOCAL_IP:5173"
 xdg-open "http://$LOCAL_IP:5173" 2>/dev/null || true
 
 trap "kill $BACKEND_PID $FRONTEND_PID" EXIT
-<<<<<<< HEAD
 wait
-=======
-wait
->>>>>>> b847488 (add setup.sh)
