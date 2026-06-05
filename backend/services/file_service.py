@@ -15,7 +15,7 @@ def save_file(db: Session, file: UploadFile, folder_id: str, owner: str) -> File
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
 
     with open(abs_path, "wb") as f:
-        while chunk := file.file.read(64 * 1024):
+        while chunk := file.file.read(32 * 1024):
             f.write(chunk)
 
     size = os.path.getsize(abs_path)
