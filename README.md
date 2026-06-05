@@ -1,6 +1,8 @@
 # Locloud
 Local cloud service for light devices like a Raspberry Pi (Pi support planned but does not work as intended as of now)
 
+Node.js reccomended
+
 ![LoCloud Screenshot](image.png)
 
 LoCloud allows you to upload, organize, and manage files through a  web interface running  locally on your device.
