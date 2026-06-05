@@ -1,7 +1,5 @@
 #!/bin/bash
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-<<<<<<< HEAD
-=======
 if [ ! -f "$ROOT_DIR/backend/.env" ]; then
   bash "$ROOT_DIR/setup.sh"
 fi
