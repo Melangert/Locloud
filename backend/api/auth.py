@@ -11,7 +11,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 def login(form: OAuth2PasswordRequestForm = Depends()):
     if form.username != FAKE_USER["username"]:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    if not verify_password(form.password, FAKE_USER["password"]):
+    try:
+        valid_password = verify_password(form.password, FAKE_USER["password"])
+    except ValueError:
+        valid_password = False
+    if not valid_password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return {
         "access_token": create_token(form.username),

@@ -14,7 +14,7 @@ FAKE_USER = {
 }
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bool(hashed) and pwd_context.verify(plain, hashed)
 
 def hash_password(plain: str) -> str:
     return pwd_context.hash(plain)
@@ -30,6 +30,7 @@ def create_token(username: str) -> str:
 def decode_token(token: str) -> str:
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
-        return payload.get("sub")
+        subject = payload.get("sub")
+        return subject if isinstance(subject, str) else None
     except JWTError:
         return None

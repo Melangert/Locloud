@@ -1,65 +1,87 @@
+import { useState } from 'react'
+import { Edit3, Folder, FolderOpen, MoreHorizontal, Trash2 } from 'lucide-react'
 import FileItem from './FileItem'
-import { Folder } from 'lucide-react'
+import { getErrorMessage, renameFolder } from '../api'
 
-export default function FileExplorer({ files, folders, onOpenFolder, onDeleteFile, onDeleteFolder, onRefresh }) {
+export default function FileExplorer({ files, folders, compact, onOpenFolder, onDeleteFile, onDeleteFolder, onMoveFile, onRefresh, onError }) {
+  const [renamingFolder, setRenamingFolder] = useState(null)
+  const [folderName, setFolderName] = useState('')
+  const [dragOverFolder, setDragOverFolder] = useState(null)
+
+  async function saveFolderName(folder) {
+    const name = folderName.trim()
+    if (!name || name === folder.name) {
+      setRenamingFolder(null)
+      return
+    }
+    try {
+      await renameFolder(folder.id, name)
+      onRefresh()
+    } catch (error) {
+      onError(getErrorMessage(error))
+    } finally {
+      setRenamingFolder(null)
+    }
+  }
+
   if (files.length === 0 && folders.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', color: '#5f6368', marginTop: 80 }}>
-        <p style={{ fontSize: 16 }}>No files here yet</p>
-        <p style={{ fontSize: 14 }}>Upload something to get started</p>
-      </div>
-    )
+    return <div className="empty-state"><FolderOpen size={42} /><h3>This folder is empty</h3><p>Upload a file or create a folder to get started.</p></div>
   }
 
   return (
-    <div>
+    <div className="explorer">
       {folders.length > 0 && (
-        <div>
-          <p style={{ fontSize: 13, color: '#5f6368', marginBottom: 8 }}>Folders</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8, marginBottom: 24 }}>
-            {folders.map(folder => (
+        <section>
+          <div className="section-label">Folders <span>{folders.length}</span></div>
+          <div className="folder-grid">
+            {folders.map((folder) => (
               <div
+                className={`folder-card ${dragOverFolder === folder.id ? 'drag-over' : ''}`}
                 key={folder.id}
-                onClick={() => onOpenFolder(folder.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 16px', borderRadius: 8, cursor: 'pointer',
-                  border: '1px solid #e0e0e0', backgroundColor: 'white',
-                  transition: 'background 0.1s'
+                onDragOver={(event) => {
+                  if (event.dataTransfer.types.includes('application/x-locloud-file')) {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    setDragOverFolder(folder.id)
+                  }
                 }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f3f4'}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+                onDragLeave={() => setDragOverFolder(null)}
+                onDrop={async (event) => {
+                  event.preventDefault()
+                  const fileId = event.dataTransfer.getData('application/x-locloud-file') || event.dataTransfer.getData('text/plain')
+                  setDragOverFolder(null)
+                  if (fileId) await onMoveFile(fileId, folder.id)
+                }}
               >
-                <Folder size={20} color="#5f6368" />
-                <span style={{ fontSize: 14, color: '#202124', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {folder.name}
-                </span>
-                <button
-                  onClick={e => { e.stopPropagation(); onDeleteFolder(folder.id) }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: 18, lineHeight: 1 }}
-                >
-                  ×
-                </button>
+                {renamingFolder === folder.id ? (
+                  <div className="folder-main">
+                    <Folder size={20} />
+                    <input className="inline-input" value={folderName} onChange={(event) => setFolderName(event.target.value)} onBlur={() => saveFolderName(folder)} onKeyDown={(event) => event.key === 'Enter' && saveFolderName(folder)} autoFocus />
+                  </div>
+                ) : (
+                  <button className="folder-main" onClick={() => onOpenFolder(folder.id)}>
+                    <Folder size={20} />
+                    <span className="truncate">{folder.name}</span>
+                  </button>
+                )}
+                <div className="folder-actions">
+                  <button className="icon-button" title="Rename folder" onClick={() => { setRenamingFolder(folder.id); setFolderName(folder.name) }}><Edit3 size={15} /></button>
+                  <button className="icon-button danger" title="Delete folder" onClick={() => onDeleteFolder(folder.id)}><Trash2 size={15} /></button>
+                  <MoreHorizontal size={15} className="muted" />
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
-
       {files.length > 0 && (
-        <div>
-          <p style={{ fontSize: 13, color: '#5f6368', marginBottom: 8 }}>Files</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {files.map(file => (
-              <FileItem
-                key={file.id}
-                file={file}
-                onDelete={onDeleteFile}
-                onRefresh={onRefresh}
-              />
-            ))}
+        <section>
+          <div className="section-label">Files <span>{files.length}</span></div>
+          <div className="file-list">
+            <div className="file-list-heading"><span>Name</span><span>Size</span><span /></div>
+            {files.map((file) => <FileItem key={file.id} file={file} compact={compact} onDelete={onDeleteFile} onRefresh={onRefresh} onError={onError} />)}
           </div>
-        </div>
+        </section>
       )}
     </div>
   )

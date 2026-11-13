@@ -10,6 +10,7 @@ source venv/bin/activate
 pip install -r requirements.txt -q
 
 JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+export JWT_SECRET
 PASSWORD_HASH=$(python3 -c "from services.auth_service import hash_password; print(hash_password('admin'))")
 
 cat > .env <<EOF

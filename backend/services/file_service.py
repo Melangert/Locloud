@@ -3,13 +3,37 @@ import os
 from sqlalchemy.orm import Session
 from db.models import File
 from config import settings
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
+from fastapi.responses import FileResponse
 import uuid
 
+def _safe_filename(filename: str) -> str:
+    name = os.path.basename(filename or "").strip()
+    if not name or name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="A valid filename is required")
+    return name
+
+def _owned_folder(db: Session, folder_id: str | None, owner: str):
+    if not folder_id:
+        return None
+    from db.models import Folder
+    folder = db.query(Folder).filter(Folder.id == folder_id, Folder.owner == owner).first()
+    if not folder:
+        raise HTTPException(status_code=400, detail="Folder not found")
+    return folder.id
+
+def file_response(file: File) -> FileResponse:
+    abs_path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, file.path))
+    upload_root = os.path.abspath(settings.UPLOAD_DIR)
+    if not abs_path.startswith(upload_root + os.sep) or not os.path.isfile(abs_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    return FileResponse(abs_path, filename=file.name, media_type="application/octet-stream")
+
 def save_file(db: Session, file: UploadFile, folder_id: str, owner: str) -> File:
-    print("saving file...")
+    filename = _safe_filename(file.filename)
+    folder_id = _owned_folder(db, folder_id, owner)
     file_id = str(uuid.uuid4())
-    ext = os.path.splitext(file.filename)[1]
+    ext = os.path.splitext(filename)[1]
     relative_path = f"{owner}/{file_id}{ext}"
     abs_path = os.path.join(settings.UPLOAD_DIR, relative_path)
 
@@ -23,7 +47,7 @@ def save_file(db: Session, file: UploadFile, folder_id: str, owner: str) -> File
 
     db_file = File(
         id=file_id,
-        name=file.filename,
+        name=filename,
         path=relative_path,
         size=size,
         folder_id=folder_id or None,
@@ -60,6 +84,7 @@ def delete_file(db: Session, file_id: str, owner: str) -> bool:
     return True
 
 def rename_file(db: Session, file_id: str, new_name: str, owner: str) -> File:
+    new_name = _safe_filename(new_name)
     file = get_file(db, file_id, owner)
     if not file:
         return None
@@ -69,9 +94,20 @@ def rename_file(db: Session, file_id: str, new_name: str, owner: str) -> File:
     db.refresh(file)
     return file
 
+def move_file(db: Session, file_id: str, folder_id: str | None, owner: str) -> File:
+    file = get_file(db, file_id, owner)
+    if not file:
+        return None
+    file.folder_id = _owned_folder(db, folder_id, owner)
+    db.commit()
+    db.refresh(file)
+    return file
+
 CHUNK_DIR = os.path.join(settings.UPLOAD_DIR, "_chunks")
 
 def start_chunked_upload(db: Session, filename: str, folder_id: str, owner: str):
+    filename = _safe_filename(filename)
+    folder_id = _owned_folder(db, folder_id, owner)
     file_id = str(uuid.uuid4())
     ext = os.path.splitext(filename)[1]
     relative_path = f"{owner}/{file_id}{ext}"
@@ -88,7 +124,12 @@ def start_chunked_upload(db: Session, filename: str, folder_id: str, owner: str)
     db.refresh(db_file)
     return db_file
 
-def save_chunk(file_id: str, chunk_index: int, file: UploadFile, owner: str):
+def save_chunk(db: Session, file_id: str, chunk_index: int, file: UploadFile, owner: str):
+    if chunk_index < 0:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    db_file = get_file(db, file_id, owner)
+    if not db_file:
+        raise HTTPException(status_code=404, detail="Upload not found")
     chunk_dir = os.path.join(CHUNK_DIR, file_id)
     os.makedirs(chunk_dir, exist_ok=True)
     chunk_path = os.path.join(chunk_dir, str(chunk_index))
@@ -97,9 +138,15 @@ def save_chunk(file_id: str, chunk_index: int, file: UploadFile, owner: str):
             f.write(chunk)
 
 def finish_chunked_upload(db: Session, file_id: str, total_chunks: int, owner: str):
+    if total_chunks < 1:
+        raise HTTPException(status_code=400, detail="Invalid chunk count")
     db_file = db.query(File).filter(File.id == file_id, File.owner == owner).first()
     if not db_file:
-        raise Exception("File not found")
+        raise HTTPException(status_code=404, detail="Upload not found")
+    chunk_dir = os.path.join(CHUNK_DIR, file_id)
+    missing = [str(i) for i in range(total_chunks) if not os.path.isfile(os.path.join(chunk_dir, str(i)))]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing upload chunks: {', '.join(missing[:5])}")
     abs_path = os.path.join(settings.UPLOAD_DIR, db_file.path)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     with open(abs_path, "wb") as out:
@@ -107,7 +154,7 @@ def finish_chunked_upload(db: Session, file_id: str, total_chunks: int, owner: s
             chunk_path = os.path.join(CHUNK_DIR, file_id, str(i))
             with open(chunk_path, "rb") as c:
                 shutil.copyfileobj(c, out)
-    shutil.rmtree(os.path.join(CHUNK_DIR, file_id))
+    shutil.rmtree(chunk_dir, ignore_errors=True)
     db_file.size = os.path.getsize(abs_path)
     db.commit()
     db.refresh(db_file)

@@ -1,10 +1,30 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getFiles, getFolders, deleteFile, deleteFolder, createFolder, getStorageUsage } from '../api'
+import { AlertCircle, ChevronRight, FolderPlus, Grid2X2, List, LogOut, Menu, Plus, Search, Settings, X } from 'lucide-react'
+import { createFolder, deleteFile, deleteFolder, getErrorMessage, getFiles, getFolders, getStorageUsage, moveFile } from '../api'
 import FileExplorer from '../components/FileExplorer'
 import FolderTree from '../components/FolderTree'
 import UploadButton from '../components/UploadButton'
 import StorageBar from '../components/StorageBar'
+
+function SettingsPanel({ preferences, setPreferences, onClose, onLogout }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="settings-panel" role="dialog" aria-modal="true" aria-label="Settings">
+        <div className="panel-heading"><div><p className="eyebrow">Workspace</p><h2>Settings</h2></div><button className="icon-button" onClick={onClose}><X size={19} /></button></div>
+        <div className="settings-section">
+          <h3>Appearance</h3>
+          <label className="setting-row"><span><strong>Theme</strong><small>Choose how Locloud looks on this device.</small></span><select value={preferences.theme} onChange={(event) => setPreferences({ ...preferences, theme: event.target.value })}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <label className="setting-row"><span><strong>Compact file list</strong><small>Reduce row spacing when you have lots of files.</small></span><input type="checkbox" checked={preferences.compact} onChange={(event) => setPreferences({ ...preferences, compact: event.target.checked })} /></label>
+        </div>
+        <div className="settings-section">
+          <h3>Session</h3>
+          <button className="button button-secondary button-wide" onClick={onLogout}><LogOut size={16} />Sign out</button>
+        </div>
+      </section>
+    </div>
+  )
+}
 
 export default function Drive() {
   const [files, setFiles] = useState([])
@@ -12,104 +32,115 @@ export default function Drive() {
   const [currentFolder, setCurrentFolder] = useState(null)
   const [usage, setUsage] = useState(null)
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [viewMode, setViewMode] = useState('list')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [preferences, setPreferences] = useState(() => {
+    try { return { theme: localStorage.getItem('theme') || 'system', compact: localStorage.getItem('compact') === 'true' } } catch { return { theme: 'system', compact: false } }
+  })
   const navigate = useNavigate()
 
-  async function load() {
-    const [f, d, u] = await Promise.all([
-      getFiles(currentFolder),
-      getFolders(currentFolder),
-      getStorageUsage()
-    ])
-    setFiles(f)
-    setFolders(d)
-    setUsage(u)
-  }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [nextFiles, nextFolders, nextUsage] = await Promise.all([getFiles(currentFolder), getFolders(currentFolder), getStorageUsage()])
+      setFiles(nextFiles)
+      setFolders(nextFolders)
+      setUsage(nextUsage)
+      setError('')
+    } catch (loadError) {
+      setError(getErrorMessage(loadError))
+    } finally {
+      setLoading(false)
+    }
+  }, [currentFolder])
 
-  useEffect(() => { load() }, [currentFolder])
+  useEffect(() => {
+    const timer = window.setTimeout(() => load(), 0)
+    return () => window.clearTimeout(timer)
+  }, [load])
+  useEffect(() => {
+    localStorage.setItem('theme', preferences.theme)
+    localStorage.setItem('compact', String(preferences.compact))
+    document.documentElement.dataset.theme = preferences.theme
+  }, [preferences])
+  useEffect(() => {
+    const handleUnauthorized = () => navigate('/login')
+    window.addEventListener('locloud:unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('locloud:unauthorized', handleUnauthorized)
+  }, [navigate])
 
-  async function handleDeleteFile(id) {
-    await deleteFile(id)
-    load()
-  }
+  const filteredFiles = useMemo(() => files.filter((file) => file.name.toLowerCase().includes(search.toLowerCase())), [files, search])
+  const filteredFolders = useMemo(() => folders.filter((folder) => folder.name.toLowerCase().includes(search.toLowerCase())), [folders, search])
 
-  async function handleDeleteFolder(id) {
-    await deleteFolder(id)
-    load()
-  }
-
-  async function handleCreateFolder() {
-    const name = prompt('Folder name')
-    if (!name) return
-    await createFolder(name, currentFolder)
-    load()
-  }
-
-  function handleLogout() {
+  function logout() {
     localStorage.removeItem('token')
     navigate('/login')
   }
 
-  const filteredFiles = files.filter(f =>
-    f.name.toLowerCase().includes(search.toLowerCase())
-  )
-  const filteredFolders = folders.filter(f =>
-    f.name.toLowerCase().includes(search.toLowerCase())
-  )
+  async function handleDeleteFile(id) {
+    if (!window.confirm('Delete this file?')) return
+    try { await deleteFile(id); await load() } catch (actionError) { setError(getErrorMessage(actionError)) }
+  }
+
+  async function handleDeleteFolder(id) {
+    if (!window.confirm('Delete this folder and everything inside it?')) return
+    try { await deleteFolder(id); await load() } catch (actionError) { setError(getErrorMessage(actionError)) }
+  }
+
+  async function handleMoveFile(fileId, folderId) {
+    try {
+      await moveFile(fileId, folderId)
+      await load()
+    } catch (actionError) {
+      setError(getErrorMessage(actionError))
+    }
+  }
+
+  async function handleCreateFolder() {
+    const name = window.prompt('Name your new folder')
+    if (!name?.trim()) return
+    try { await createFolder(name.trim(), currentFolder); await load() } catch (actionError) { setError(getErrorMessage(actionError)) }
+  }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'Google Sans, Roboto, sans-serif', backgroundColor: '#f8f9fa' }}>
-      <div style={{ width: 240, backgroundColor: 'white', padding: 16, display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #e0e0e0' }}>
-        <h2 style={{ fontSize: 22, fontWeight: 400, color: '#202124', padding: '8px 0 16px' }}>Locloud</h2>
-        <UploadButton currentFolder={currentFolder} onUpload={load} />
-        <button
-          onClick={handleCreateFolder}
-          style={{ padding: '10px 16px', border: '1px solid #dadce0', borderRadius: 20, background: 'white', cursor: 'pointer', textAlign: 'left', fontSize: 14, color: '#202124' }}
-        >
-          + New folder
-        </button>
-        <div style={{ marginTop: 16 }}>
-          <FolderTree currentFolder={currentFolder} onSelect={setCurrentFolder} />
+    <div className="app-shell">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <div className="brand"><div className="brand-mark">L</div><span>Locloud</span><button className="icon-button sidebar-close" onClick={() => setSidebarOpen(false)}><X size={18} /></button></div>
+        <div className="sidebar-actions">
+          <UploadButton currentFolder={currentFolder} onUpload={load} onError={setError} />
+          <button className="button button-secondary button-wide" onClick={handleCreateFolder}><FolderPlus size={17} />New folder</button>
         </div>
-        <div style={{ marginTop: 'auto' }}>
+        <FolderTree currentFolder={currentFolder} onSelect={(folder) => { setCurrentFolder(folder); setSidebarOpen(false) }} />
+        <div className="sidebar-bottom">
           <StorageBar usage={usage} />
-          <button
-            onClick={handleLogout}
-            style={{ marginTop: 12, width: '100%', padding: '8px', border: 'none', background: 'none', cursor: 'pointer', color: '#5f6368', fontSize: 13 }}
-          >
-            Sign out
-          </button>
+          <button className="nav-item" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></button>
+          <button className="nav-item" onClick={logout}><LogOut size={17} /><span>Sign out</span></button>
         </div>
-      </div>
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '12px 24px', borderBottom: '1px solid #e0e0e0', backgroundColor: 'white' }}>
-          <input
-            placeholder="Search files..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ width: '100%', maxWidth: 600, padding: '10px 16px', border: '1px solid #dadce0', borderRadius: 24, fontSize: 14, outline: 'none', backgroundColor: '#f1f3f4', color: '#202124' }}
-          />
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-          {currentFolder && (
-            <button
-              onClick={() => setCurrentFolder(null)}
-              style={{ marginBottom: 16, background: 'none', border: 'none', cursor: 'pointer', color: '#1a73e8', fontSize: 14 }}
-            >
-              ← Back
-            </button>
+      </aside>
+      <main className="main-content">
+        <header className="topbar">
+          <button className="icon-button menu-button" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
+          <div className="search-box"><Search size={18} /><input placeholder="Search in your drive" value={search} onChange={(event) => setSearch(event.target.value)} /><kbd>⌘ K</kbd></div>
+          <button className="icon-button" title="Settings" onClick={() => setSettingsOpen(true)}><Settings size={19} /></button>
+          <div className="avatar">A</div>
+        </header>
+        <div className="content">
+          <div className="content-heading">
+            <div><p className="eyebrow">Files & folders</p><div className="breadcrumbs"><button onClick={() => setCurrentFolder(null)}>My drive</button>{currentFolder && <><ChevronRight size={16} /><span>Current folder</span></>}</div></div>
+            <div className="view-switcher"><button className={viewMode === 'list' ? 'selected' : ''} onClick={() => setViewMode('list')} title="List view"><List size={17} /></button><button className={viewMode === 'grid' ? 'selected' : ''} onClick={() => setViewMode('grid')} title="Grid view"><Grid2X2 size={17} /></button></div>
+          </div>
+          {error && <div className="alert error"><AlertCircle size={17} /><span>{error}</span><button className="icon-button" onClick={() => setError('')}><X size={15} /></button></div>}
+          {loading ? <div className="loading-state"><div className="spinner" /><span>Loading your files…</span></div> : (
+            <FileExplorer files={filteredFiles} folders={filteredFolders} compact={preferences.compact} onOpenFolder={setCurrentFolder} onDeleteFile={handleDeleteFile} onDeleteFolder={handleDeleteFolder} onMoveFile={handleMoveFile} onRefresh={load} onError={setError} />
           )}
-          <FileExplorer
-            files={filteredFiles}
-            folders={filteredFolders}
-            onOpenFolder={setCurrentFolder}
-            onDeleteFile={handleDeleteFile}
-            onDeleteFolder={handleDeleteFolder}
-            onRefresh={load}
-          />
+          {!loading && search && filteredFiles.length + filteredFolders.length === 0 && <div className="search-empty"><Search size={28} /><p>No results for “{search}”</p><button className="button button-secondary" onClick={() => setSearch('')}>Clear search</button></div>}
         </div>
-      </div>
+        <button className="floating-create" onClick={handleCreateFolder}><Plus size={18} />New</button>
+      </main>
+      {settingsOpen && <SettingsPanel preferences={preferences} setPreferences={setPreferences} onClose={() => setSettingsOpen(false)} onLogout={logout} />}
     </div>
   )
 }

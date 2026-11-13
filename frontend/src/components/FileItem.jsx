@@ -1,74 +1,66 @@
 import { useState } from 'react'
-import { File, Download, Trash2, Pencil } from 'lucide-react'
-import { downloadFile, deleteFile, renameFile } from '../api'
+import { Download, File as FileIcon, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { downloadFile, getErrorMessage, renameFile } from '../api'
 
-export default function FileItem({ file, onDelete, onRefresh }) {
+function formatSize(bytes) {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  return `${(bytes / (1024 ** index)).toFixed(index ? 1 : 0)} ${units[index]}`
+}
+
+export default function FileItem({ file, compact, onDelete, onRefresh, onError }) {
   const [renaming, setRenaming] = useState(false)
   const [newName, setNewName] = useState(file.name)
 
-  function formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+  async function saveName() {
+    const name = newName.trim()
+    if (!name || name === file.name) {
+      setRenaming(false)
+      setNewName(file.name)
+      return
+    }
+    try {
+      await renameFile(file.id, name)
+      onRefresh()
+    } catch (error) {
+      onError(getErrorMessage(error))
+    } finally {
+      setRenaming(false)
+    }
   }
 
-  async function handleRename() {
-    if (newName && newName !== file.name) {
-      await renameFile(file.id, newName)
-      onRefresh()
+  async function handleDownload() {
+    try {
+      await downloadFile(file.id, file.name)
+    } catch (error) {
+      onError(getErrorMessage(error))
     }
-    setRenaming(false)
   }
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '8px 16px', borderRadius: 8, backgroundColor: 'white',
-      border: '1px solid transparent', cursor: 'default'
-    }}
-      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f3f4'}
-      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+    <div
+      className={`file-row ${compact ? 'compact' : ''}`}
+      draggable={!renaming}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('application/x-locloud-file', file.id)
+        event.dataTransfer.setData('text/plain', file.id)
+      }}
     >
-      <File size={20} color="#5f6368" />
-
-      {renaming ? (
-        <input
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onBlur={handleRename}
-          onKeyDown={e => e.key === 'Enter' && handleRename()}
-          autoFocus
-          style={{ flex: 1, fontSize: 14, border: '1px solid #1a73e8', borderRadius: 4, padding: '2px 8px' }}
-        />
-      ) : (
-        <span style={{ flex: 1, fontSize: 14, color: '#202124' }}>{file.name}</span>
-      )}
-
-      <span style={{ fontSize: 12, color: '#5f6368', minWidth: 60, textAlign: 'right' }}>
-        {formatSize(file.size)}
-      </span>
-
-      <button
-        onClick={() => setRenaming(true)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', padding: 4 }}
-      >
-        <Pencil size={16} />
-      </button>
-
-      <button
-        onClick={() => downloadFile(file.id, file.name)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', padding: 4 }}
-      >
-        <Download size={16} />
-      </button>
-
-      <button
-        onClick={() => onDelete(file.id)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d93025', padding: 4 }}
-      >
-        <Trash2 size={16} />
-      </button>
+      <div className="file-name-cell">
+        <span className="file-icon"><FileIcon size={18} /></span>
+        {renaming ? (
+          <input className="inline-input" value={newName} onChange={(event) => setNewName(event.target.value)} onBlur={saveName} onKeyDown={(event) => event.key === 'Enter' && saveName()} autoFocus />
+        ) : <span className="truncate" title={file.name}>{file.name}</span>}
+      </div>
+      <span className="file-meta">{formatSize(file.size)}</span>
+      <div className="row-actions">
+        <button className="icon-button" title="Rename" onClick={() => setRenaming(true)}><Pencil size={16} /></button>
+        <button className="icon-button" title="Download" onClick={handleDownload}><Download size={16} /></button>
+        <button className="icon-button danger" title="Delete" onClick={() => onDelete(file.id)}><Trash2 size={16} /></button>
+        <button className="icon-button mobile-only" title="More actions"><MoreHorizontal size={16} /></button>
+      </div>
     </div>
   )
 }

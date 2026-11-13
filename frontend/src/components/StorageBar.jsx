@@ -1,20 +1,15 @@
+import { HardDrive } from 'lucide-react'
+
 export default function StorageBar({ usage }) {
   if (!usage) return null
-
-  const percent = Math.min((usage.used / (20 * 1024 * 1024 * 1024)) * 100, 100)
+  const limit = usage.limit_bytes || 20 * 1024 * 1024 * 1024
+  const percent = Math.min((usage.used / limit) * 100, 100)
 
   return (
-    <div style={{ padding: '8px 0' }}>
-      <div style={{ height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, marginBottom: 6 }}>
-        <div style={{
-          width: `${percent}%`, height: '100%',
-          backgroundColor: percent > 90 ? '#d93025' : '#1a73e8',
-          borderRadius: 2
-        }} />
-      </div>
-      <p style={{ fontSize: 12, color: '#5f6368' }}>
-        {usage.used_gb} GB of 20 GB used
-      </p>
+    <div className="storage-card">
+      <div className="storage-heading"><HardDrive size={16} /><span>Storage</span><strong>{Math.round(percent)}%</strong></div>
+      <div className="progress-track"><div className={`progress-value ${percent > 90 ? 'danger' : ''}`} style={{ width: `${percent}%` }} /></div>
+      <p>{usage.used_gb || '0'} GB used of {usage.limit_gb || '20'} GB</p>
     </div>
   )
 }

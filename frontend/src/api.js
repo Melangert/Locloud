@@ -4,82 +4,123 @@ function getToken() {
   return localStorage.getItem('token')
 }
 
-function authHeaders() {
-  return {
-    'Authorization': `Bearer ${getToken()}`,
-    'Content-Type': 'application/json'
+async function request(path, options = {}) {
+  const headers = new Headers(options.headers || {})
+  if (!headers.has('Authorization') && getToken()) {
+    headers.set('Authorization', `Bearer ${getToken()}`)
   }
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const response = await fetch(`${BASE}${path}`, { ...options, headers })
+  if (response.status === 401) {
+    localStorage.removeItem('token')
+    window.dispatchEvent(new Event('locloud:unauthorized'))
+  }
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`
+    try {
+      const body = await response.json()
+      message = body.detail || message
+    } catch {
+      // Keep the HTTP status when the server does not return JSON.
+    }
+    throw new Error(message)
+  }
+  if (response.status === 204) return null
+  return response.json()
+}
+
+export function getErrorMessage(error) {
+  return error instanceof Error ? error.message : 'Something went wrong'
 }
 
 export async function login(username, password) {
   const form = new FormData()
   form.append('username', username)
   form.append('password', password)
-  const res = await fetch(`${BASE}/auth/login`, { method: 'POST', body: form })
-  if (!res.ok) throw new Error('Invalid credentials')
-  return res.json()
+  return request('/auth/login', { method: 'POST', body: form })
 }
 
-export async function getFiles(folderId = null) {
-  const url = folderId ? `${BASE}/files/?folder_id=${folderId}` : `${BASE}/files/`
-  const res = await fetch(url, { headers: authHeaders() })
-  return res.json()
+export function getFiles(folderId = null) {
+  return request(`/files/${folderId ? `?folder_id=${encodeURIComponent(folderId)}` : ''}`)
 }
 
-export async function uploadFile(file, folderId = null) {
-  const form = new FormData()
-  form.append('file', file)
-  const url = folderId ? `${BASE}/files/upload?folder_id=${folderId}` : `${BASE}/files/upload`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${getToken()}` },
-    body: form
-  })
-  return res.json()
+export async function uploadFile(file, folderId = null, onProgress = () => {}) {
+  const { id: fileId } = await request(`/files/upload/start?filename=${encodeURIComponent(file.name)}${folderId ? `&folder_id=${encodeURIComponent(folderId)}` : ''}`, { method: 'POST' })
+  const chunkSize = 10 * 1024 * 1024
+  const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize))
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    const form = new FormData()
+    form.append('file', file.slice(index * chunkSize, (index + 1) * chunkSize), file.name)
+    await request(`/files/upload/chunk?file_id=${encodeURIComponent(fileId)}&chunk_index=${index}`, {
+      method: 'POST',
+      body: form,
+    })
+    onProgress(Math.round(((index + 1) / totalChunks) * 95))
+  }
+
+  const result = await request(`/files/upload/finish?file_id=${encodeURIComponent(fileId)}&total_chunks=${totalChunks}`, { method: 'POST' })
+  onProgress(100)
+  return result
 }
 
 export async function downloadFile(fileId, fileName) {
-  const res = await fetch(`${BASE}/files/download/${fileId}`, { headers: authHeaders() })
-  const blob = await res.blob()
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = fileName
-  a.click()
+  const response = await fetch(`${BASE}/files/download/${encodeURIComponent(fileId)}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+  if (!response.ok) throw new Error('Unable to download file')
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
-export async function deleteFile(fileId) {
-  await fetch(`${BASE}/files/${fileId}`, { method: 'DELETE', headers: authHeaders() })
+export function deleteFile(fileId) {
+  return request(`/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' })
 }
 
-export async function renameFile(fileId, name) {
-  const res = await fetch(`${BASE}/files/${fileId}/rename`, {
+export function renameFile(fileId, name) {
+  return request(`/files/${encodeURIComponent(fileId)}/rename`, {
     method: 'PATCH',
-    headers: authHeaders(),
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name }),
   })
-  return res.json()
 }
 
-export async function getFolders(parentId = null) {
-  const url = parentId ? `${BASE}/folders/?parent_id=${parentId}` : `${BASE}/folders/`
-  const res = await fetch(url, { headers: authHeaders() })
-  return res.json()
+export function moveFile(fileId, folderId = null) {
+  return request(`/files/${encodeURIComponent(fileId)}/move`, {
+    method: 'PATCH',
+    body: JSON.stringify({ folder_id: folderId }),
+  })
 }
 
-export async function createFolder(name, parentId = null) {
-  const res = await fetch(`${BASE}/folders/`, {
+export function getFolders(parentId = null) {
+  return request(`/folders/${parentId ? `?parent_id=${encodeURIComponent(parentId)}` : ''}`)
+}
+
+export function createFolder(name, parentId = null) {
+  return request('/folders/', {
     method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ name, parent_id: parentId })
+    body: JSON.stringify({ name, parent_id: parentId }),
   })
-  return res.json()
 }
 
-export async function deleteFolder(folderId) {
-  await fetch(`${BASE}/folders/${folderId}`, { method: 'DELETE', headers: authHeaders() })
+export function renameFolder(folderId, name) {
+  return request(`/folders/${encodeURIComponent(folderId)}/rename`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
 }
 
-export async function getStorageUsage() {
-  const res = await fetch(`${BASE}/storage/usage`, { headers: authHeaders() })
-  return res.json()
+export function deleteFolder(folderId) {
+  return request(`/folders/${encodeURIComponent(folderId)}`, { method: 'DELETE' })
+}
+
+export function getStorageUsage() {
+  return request('/storage/usage')
 }

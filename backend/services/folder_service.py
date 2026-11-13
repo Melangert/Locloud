@@ -3,7 +3,18 @@
 from sqlalchemy.orm import Session
 from db.models import Folder
 
+def _safe_name(name: str) -> str:
+    from fastapi import HTTPException
+    value = (name or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="A folder name is required")
+    return value
+
 def create_folder(db: Session, name: str, parent_id: str, owner: str) -> Folder:
+    name = _safe_name(name)
+    if parent_id and not get_folder(db, parent_id, owner):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Parent folder not found")
     folder = Folder(
         name=name,
         parent_id=parent_id or None,
@@ -27,6 +38,7 @@ def get_folder(db: Session, folder_id: str, owner: str) -> Folder:
     ).first()
 
 def rename_folder(db: Session, folder_id: str, new_name: str, owner: str) -> Folder:
+    new_name = _safe_name(new_name)
     folder = get_folder(db, folder_id, owner)
     if not folder:
         return None
@@ -39,6 +51,29 @@ def delete_folder(db: Session, folder_id: str, owner: str) -> bool:
     folder = get_folder(db, folder_id, owner)
     if not folder:
         return False
-    db.delete(folder)
+    from db.models import File
+    folders = [folder]
+    index = 0
+    while index < len(folders):
+        children = db.query(Folder).filter(
+            Folder.parent_id == folders[index].id,
+            Folder.owner == owner
+        ).all()
+        folders.extend(children)
+        index += 1
+    folder_ids = [item.id for item in folders]
+    files = db.query(File).filter(
+        File.owner == owner,
+        File.folder_id.in_(folder_ids)
+    ).all()
+    import os
+    from config import settings
+    for file in files:
+        path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, file.path))
+        if os.path.isfile(path):
+            os.remove(path)
+        db.delete(file)
+    for item in reversed(folders):
+        db.delete(item)
     db.commit()
     return True

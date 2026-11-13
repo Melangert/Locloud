@@ -1,83 +1,46 @@
-import { useState, useRef } from 'react'
-import { Upload } from 'lucide-react'
-import { uploadFile } from '../api'
+import { useRef, useState } from 'react'
+import { Upload, X } from 'lucide-react'
+import { getErrorMessage, uploadFile } from '../api'
 
-export default function UploadButton({ currentFolder, onUpload }) {
+export default function UploadButton({ currentFolder, onUpload, onError }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
-  const inputRef = useRef()
-const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB
+  const [fileName, setFileName] = useState('')
+  const inputRef = useRef(null)
 
-async function handleChange(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  setUploading(true)
-  setProgress(0)
-
-  const token = localStorage.getItem('token')
-  const headers = { Authorization: `Bearer ${token}` }
-  const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
-
-  // start
-  const startRes = await fetch(`/api/files/upload/start?filename=${encodeURIComponent(file.name)}&folder_id=${currentFolder || ''}`, {
-    method: 'POST', headers
-  })
-  const { id: fileId } = await startRes.json()
-
-  // upload chunks
-  for (let i = 0; i < totalChunks; i++) {
-    const blob = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-    const form = new FormData()
-    form.append('file', blob, file.name)
-    await fetch(`/api/files/upload/chunk?file_id=${fileId}&chunk_index=${i}`, {
-      method: 'POST', headers, body: form
-    })
-    setProgress(Math.round(((i + 1) / totalChunks) * 95))
+  async function handleChange(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setUploading(true)
+    setProgress(0)
+    setFileName(file.name)
+    try {
+      await uploadFile(file, currentFolder, setProgress)
+      onUpload()
+    } catch (error) {
+      onError(getErrorMessage(error))
+    } finally {
+      setTimeout(() => {
+        setUploading(false)
+        setProgress(0)
+        setFileName('')
+      }, 400)
+    }
   }
 
-  // finish
-  await fetch(`/api/files/upload/finish?file_id=${fileId}&total_chunks=${totalChunks}`, {
-    method: 'POST', headers
-  })
-
-  setProgress(100)
-  setTimeout(() => {
-    setUploading(false)
-    setProgress(0)
-    onUpload()
-  }, 500)
-  e.target.value = ''
-}
-
   return (
-    <div>
-      <input
-        ref={inputRef}
-        type="file"
-        onChange={handleChange}
-        style={{ display: 'none' }}
-      />
-      <button
-        onClick={() => inputRef.current.click()}
-        disabled={uploading}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          width: '100%', padding: '10px 16px',
-          backgroundColor: '#1a73e8', color: 'white',
-          border: 'none', borderRadius: 20, cursor: 'pointer',
-          fontSize: 14, fontWeight: 500
-        }}
-      >
-        <Upload size={18} />
-        {uploading ? `Uploading... ${progress}%` : 'Upload file'}
+    <div className="upload-control">
+      <input ref={inputRef} type="file" onChange={handleChange} hidden />
+      <button className="button button-primary button-wide" onClick={() => inputRef.current?.click()} disabled={uploading}>
+        <Upload size={17} />
+        {uploading ? `Uploading ${progress}%` : 'Upload file'}
       </button>
       {uploading && (
-        <div style={{ marginTop: 8, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2 }}>
-          <div style={{
-            width: `${progress}%`, height: '100%',
-            backgroundColor: '#1a73e8', borderRadius: 2,
-            transition: 'width 0.1s'
-          }} />
+        <div className="upload-progress" aria-label={`Uploading ${fileName}`}>
+          <div className="progress-track"><div className="progress-value" style={{ width: `${progress}%` }} /></div>
+          <span>{fileName}</span>
+          <button className="icon-button" title="Uploads cannot be cancelled yet" disabled><X size={14} /></button>
         </div>
       )}
     </div>
