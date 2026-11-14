@@ -1,8 +1,8 @@
 # Locloud
 
-Local file storage with a FastAPI/SQLite backend and React interface.
+Local file storage with a FastAPI and SQLite backend and a React interface.
 
-## Run locally
+## Install
 
 Requirements: Python 3.10+, Node.js 20.19+ or 22.12+, and npm.
 
@@ -17,7 +17,19 @@ cd Locloud
 ./run.sh
 ```
 
-For an existing installation, stop Locloud, back up its data (see below), then:
+Open **http://localhost:8000**. The launcher builds the frontend, starts the
+backend, checks readiness, and opens your browser. Keep the terminal open; Ctrl+C
+stops the server. Set `LOCLOUD_OPEN_BROWSER=0` to skip opening a browser. Run
+`./setup.sh` after pulling an update to rebuild the frontend.
+
+Setup preserves an existing `.env`, account, database, and uploaded files. A new
+installation starts with `admin` / `admin`; change the password in **Settings**.
+Changing it revokes other sessions.
+
+## Upgrade
+
+Stop Locloud and back up `backend/locloud.db`, `backend/uploads/`, and
+`backend/.env` together. Then update and restart:
 
 ```bash
 cd ~/Projects/Locloud
@@ -26,74 +38,68 @@ git pull --ff-only
 ./run.sh
 ```
 
-Open **http://localhost:8000**. The launcher serves the built interface and API
-from one server, checks readiness, and opens your browser. Keep the terminal
-open; Ctrl+C stops it. Set `LOCLOUD_OPEN_BROWSER=0` to skip opening a browser.
-Run `./setup.sh` again after frontend changes to rebuild the interface.
-Existing `.env`, credentials, database, and uploads are preserved by setup.
-A Locloud desktop launcher can be installed by copying `locloud.desktop` into
-`~/.local/share/applications/` (its path assumes `~/Projects/Locloud`).
+Existing databases migrate automatically on first start. Database migrations
+preserve stored file records.
 
-The initial account is **admin / admin**. Use **Settings → Change password**
-to replace it; the new hash is stored in SQLite and other sessions are revoked.
-Existing installations retain their current password.
+## Use Locloud
 
-For another device on your trusted LAN, open `http://<server-LAN-IP>:8000`.
-`HOST` and `PORT` in `backend/.env` control the listener; the default host is
-`0.0.0.0`. Use `HOST=127.0.0.1` for access from this computer only. Internet
-exposure requires a separately configured HTTPS proxy and network controls.
+- Upload several files with progress and cancellation.
+- Browse nested folders, search the current folder, and sort by name, date, or size.
+- Move, rename, download, and permanently delete files. Drag files onto folders
+  to move them, or use the move action on touch devices.
+- Choose list or grid view, light/dark/system theme, compact rows, and whether to
+  display hidden files. These preferences are saved in the current browser.
+- Review Locloud file usage separately from free space on the storage disk.
 
-## File workflows
+Press `/` while the drive is open to focus search. On narrow screens, open the
+folder navigation with the menu button. File and folder deletion is permanent;
+Locloud does not have a recycle bin.
 
-- Upload multiple files sequentially, with progress and cancellation.
-- Incomplete uploads stay hidden; cancellation removes their chunks and record.
-- Download, rename, permanently delete, or move files to any folder or the root.
-- Drag files onto folders to move them; touch devices have visible action buttons.
-- Navigate nested folders using the sidebar and named breadcrumbs.
-- Switch between working list/grid views, sort by name/date/size, and search the
-  current folder. Ctrl/Cmd+K focuses search.
-- Real disk usage/free space, separate from Locloud's stored-file total.
-- Settings: system/light/dark theme, compact rows, default view, sort order,
-  hidden files, preference reset, storage details, and password change.
-  Browsing preferences are saved in the current browser.
+## Network access and backups
 
-Deletion is permanent and prompts for confirmation. There is no recycle bin.
-If a browser closes or loses connection during an upload, unfinished data can
-remain on the server; automatic expiry/resume is not implemented.
-Chunk assembly needs enough disk space for both uploaded chunks and the final
-file. The supplied launcher runs a single backend process.
+Locloud listens on `0.0.0.0:8000` by default. On another device on your trusted
+LAN, open `http://<server-LAN-IP>:8000`. Set `HOST=127.0.0.1` in
+`backend/.env` to restrict access to this computer. For internet access, add a
+separately configured HTTPS proxy and network controls.
 
-## Data and backups
+Back up the database, uploads directory, and `.env` together with the server
+stopped. The database also contains password changes; keep backups private.
+Incomplete uploads can remain on disk if a browser closes or loses connection.
+Automatic resume and expiry are not implemented.
 
-Data lives in `backend/locloud.db`, `backend/uploads/`, and `backend/.env`.
-Back up all three together with the server stopped. The database also contains
-password changes; keep backups private. Existing databases migrate automatically
-on first start, retaining existing file records. Do not commit runtime data.
+## Development
 
-## Development and checks
+Start the backend and frontend in separate terminals:
 
 ```bash
 cd ~/Projects/Locloud/backend
 venv/bin/python main.py
-# In another terminal:
+```
+
+```bash
 cd ~/Projects/Locloud/frontend
 npm run dev
 ```
 
-Vite is available at port 5173 and proxies `/api` to port 8000.
+Vite runs on port `5173` and proxies API requests to `127.0.0.1:8000`.
+
+Run frontend checks:
 
 ```bash
-cd frontend
+cd ~/Projects/Locloud/frontend
 npm run lint
 npm test
 npm run build
-cd ../backend
-# Install httpx if no compatible test client is installed:
+```
+
+Run backend integration tests:
+
+```bash
+cd ~/Projects/Locloud/backend
 venv/bin/python -m pip install httpx
 venv/bin/python -m unittest discover -s tests -v
 ```
 
-Integration tests use a temporary database and upload directory. They cover
-file transfers, empty files, rename/move/delete, nested cleanup, authentication,
-ownership, password changes/session revocation, storage reporting, frontend
-serving, and migration of an existing database.
+Backend integration tests use a temporary database and upload directory. They
+cover file transfers, cancellation, nested cleanup, ownership, authentication,
+password changes, storage reporting, frontend serving, and migration.

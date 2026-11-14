@@ -50,7 +50,7 @@ export default function Drive() {
   useEffect(() => {
     const unauthorized = () => navigate('/login')
     const shortcuts = event => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); searchRef.current?.focus() }
+      if ((event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey) || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k')) { event.preventDefault(); searchRef.current?.focus() }
       if (event.key === 'Escape') setSidebarOpen(false)
     }
     window.addEventListener('locloud:unauthorized', unauthorized)
@@ -98,7 +98,7 @@ export default function Drive() {
       <div className="sidebar-bottom"><StorageBar usage={usage} /><button className="nav-item" onClick={() => setSettingsOpen(true)}><Settings size={17} /><span>Settings</span></button><button className="nav-item" onClick={logout}><LogOut size={17} /><span>Sign out</span></button></div>
     </aside>
     <main className="main-content">
-      <header className="topbar"><button className="icon-button menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div className="search-box"><Search size={18} /><input ref={searchRef} aria-label="Search current folder" placeholder="Search this folder" value={search} onChange={event => setSearch(event.target.value)} /><kbd>Ctrl/⌘ K</kbd></div><button className="icon-button" title="Settings" onClick={() => setSettingsOpen(true)}><Settings size={19} /></button><div className="avatar" title="admin">A</div></header>
+      <header className="topbar"><button className="icon-button menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button><div className="search-box"><Search size={18} /><input ref={searchRef} aria-label="Search current folder" placeholder="Search this folder" value={search} onChange={event => setSearch(event.target.value)} /><kbd>/</kbd></div></header>
       <div className="content">
         <div className="content-heading"><div><p className="eyebrow">Files & folders</p><nav className="breadcrumbs" aria-label="Breadcrumb"><button onClick={() => openFolder(null)}>My drive</button>{breadcrumbs.map(folder => <span className="breadcrumb-part" key={folder.id}><ChevronRight size={16} /><button aria-current={folder.id === currentFolder ? 'page' : undefined} onClick={() => openFolder(folder.id)}>{folder.name}</button></span>)}</nav></div>
           <div className="toolbar"><button className="icon-button" title="Refresh files" onClick={load} disabled={loading}><RefreshCw size={17} /></button><select aria-label="Sort files" value={preferences.sort} onChange={event => setPreferences(p => ({ ...p, sort: event.target.value }))}><option value="name">Name A–Z</option><option value="newest">Newest</option><option value="size">Largest</option></select><div className="view-switcher">{[['list', List], ['grid', Grid2X2]].map(([mode, Icon]) => <button key={mode} className={preferences.viewMode === mode ? 'selected' : ''} aria-pressed={preferences.viewMode === mode} onClick={() => setPreferences(p => ({ ...p, viewMode: mode }))} title={`${mode === 'list' ? 'List' : 'Grid'} view`}><Icon size={17} /></button>)}</div></div>
