@@ -47,6 +47,9 @@ def rename_folder(db: Session, folder_id: str, new_name: str, owner: str) -> Fol
     db.refresh(folder)
     return folder
 
+from services.file_service import serialized
+
+@serialized
 def delete_folder(db: Session, folder_id: str, owner: str) -> bool:
     folder = get_folder(db, folder_id, owner)
     if not folder:
@@ -70,8 +73,12 @@ def delete_folder(db: Session, folder_id: str, owner: str) -> bool:
     from config import settings
     for file in files:
         path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, file.path))
-        if os.path.isfile(path):
-            os.remove(path)
+        for disk_path in (path, path + ".assembling"):
+            if os.path.isfile(disk_path):
+                os.remove(disk_path)
+        import shutil
+        from services.file_service import CHUNK_DIR
+        shutil.rmtree(os.path.join(CHUNK_DIR, file.id), ignore_errors=True)
         db.delete(file)
     for item in reversed(folders):
         db.delete(item)

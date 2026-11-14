@@ -6,10 +6,28 @@ from config import settings
 from fastapi import UploadFile, HTTPException
 from fastapi.responses import FileResponse
 import uuid
+from functools import wraps
+from threading import RLock
+
+_upload_lock = RLock()
+
+def serialized(operation):
+    @wraps(operation)
+    def run(*args, **kwargs):
+        with _upload_lock:
+            return operation(*args, **kwargs)
+    return run
+
+def pending_upload(db, file_id, owner):
+    record = get_file(db, file_id, owner)
+    if not record or record.status != "uploading":
+        raise HTTPException(status_code=404, detail="Upload not found or already completed")
+    return record
+
 
 def _safe_filename(filename: str) -> str:
     name = os.path.basename(filename or "").strip()
-    if not name or name in {".", ".."}:
+    if not name or name in {".", ".."} or len(name) > 255 or any(ord(c) < 32 for c in name):
         raise HTTPException(status_code=400, detail="A valid filename is required")
     return name
 
@@ -61,7 +79,8 @@ def save_file(db: Session, file: UploadFile, folder_id: str, owner: str) -> File
 def get_files(db: Session, folder_id: str, owner: str) -> list[File]:
     return db.query(File).filter(
         File.owner == owner,
-        File.folder_id == folder_id
+        File.folder_id == folder_id,
+        File.status == "ready"
     ).all()
 
 def get_file(db: Session, file_id: str, owner: str) -> File:
@@ -70,15 +89,18 @@ def get_file(db: Session, file_id: str, owner: str) -> File:
         File.owner == owner
     ).first()
 
+@serialized
 def delete_file(db: Session, file_id: str, owner: str) -> bool:
     file = get_file(db, file_id, owner)
     if not file:
         return False
 
     abs_path = os.path.join(settings.UPLOAD_DIR, file.path)
-    if os.path.exists(abs_path):
-        os.remove(abs_path)
+    for path in (abs_path, abs_path + ".assembling"):
+        if os.path.isfile(path):
+            os.remove(path)
 
+    shutil.rmtree(os.path.join(CHUNK_DIR, file_id), ignore_errors=True)
     db.delete(file)
     db.commit()
     return True
@@ -105,6 +127,7 @@ def move_file(db: Session, file_id: str, folder_id: str | None, owner: str) -> F
 
 CHUNK_DIR = os.path.join(settings.UPLOAD_DIR, "_chunks")
 
+@serialized
 def start_chunked_upload(db: Session, filename: str, folder_id: str, owner: str):
     filename = _safe_filename(filename)
     folder_id = _owned_folder(db, folder_id, owner)
@@ -117,44 +140,65 @@ def start_chunked_upload(db: Session, filename: str, folder_id: str, owner: str)
         path=relative_path,
         size=0,
         folder_id=folder_id or None,
-        owner=owner
+        owner=owner,
+        status="uploading"
     )
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
     return db_file
 
+@serialized
 def save_chunk(db: Session, file_id: str, chunk_index: int, file: UploadFile, owner: str):
     if chunk_index < 0:
         raise HTTPException(status_code=400, detail="Invalid chunk index")
-    db_file = get_file(db, file_id, owner)
-    if not db_file:
-        raise HTTPException(status_code=404, detail="Upload not found")
+    pending_upload(db, file_id, owner)
     chunk_dir = os.path.join(CHUNK_DIR, file_id)
     os.makedirs(chunk_dir, exist_ok=True)
     chunk_path = os.path.join(chunk_dir, str(chunk_index))
-    with open(chunk_path, "wb") as f:
-        while chunk := file.file.read(32 * 1024):
-            f.write(chunk)
+    temporary_path = chunk_path + ".partial"
+    try:
+        with open(temporary_path, "wb") as f:
+            size = 0
+            while chunk := file.file.read(32 * 1024):
+                size += len(chunk)
+                if size > 10 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Upload chunks must be 10 MiB or smaller")
+                if shutil.disk_usage(settings.UPLOAD_DIR).free < len(chunk):
+                    raise HTTPException(status_code=507, detail="Storage disk is full")
+                f.write(chunk)
+        os.replace(temporary_path, chunk_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
 
+@serialized
 def finish_chunked_upload(db: Session, file_id: str, total_chunks: int, owner: str):
     if total_chunks < 1:
         raise HTTPException(status_code=400, detail="Invalid chunk count")
-    db_file = db.query(File).filter(File.id == file_id, File.owner == owner).first()
-    if not db_file:
-        raise HTTPException(status_code=404, detail="Upload not found")
+    db_file = pending_upload(db, file_id, owner)
     chunk_dir = os.path.join(CHUNK_DIR, file_id)
     missing = [str(i) for i in range(total_chunks) if not os.path.isfile(os.path.join(chunk_dir, str(i)))]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing upload chunks: {', '.join(missing[:5])}")
     abs_path = os.path.join(settings.UPLOAD_DIR, db_file.path)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-    with open(abs_path, "wb") as out:
-        for i in range(total_chunks):
-            chunk_path = os.path.join(CHUNK_DIR, file_id, str(i))
-            with open(chunk_path, "rb") as c:
-                shutil.copyfileobj(c, out)
+    required = sum(os.path.getsize(os.path.join(chunk_dir, str(i))) for i in range(total_chunks))
+    if required > shutil.disk_usage(settings.UPLOAD_DIR).free:
+        raise HTTPException(status_code=507, detail="Not enough free disk space to finish upload")
+    temporary_path = abs_path + ".assembling"
+    try:
+        with open(temporary_path, "wb") as out:
+            for i in range(total_chunks):
+                chunk_path = os.path.join(CHUNK_DIR, file_id, str(i))
+                with open(chunk_path, "rb") as c:
+                    shutil.copyfileobj(c, out)
+        os.replace(temporary_path, abs_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
     shutil.rmtree(chunk_dir, ignore_errors=True)
+    db_file.status = "ready"
     db_file.size = os.path.getsize(abs_path)
     db.commit()
     db.refresh(db_file)

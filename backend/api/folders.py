@@ -19,6 +19,11 @@ def list_folders(parent_id: str = None, db: Session = Depends(get_db), user: str
 def create_folder(body: FolderRequest, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     return folder_service.create_folder(db, body.name.strip(), body.parent_id, user)
 
+@router.get("/all")
+def all_folders(db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+    from db.models import Folder
+    return db.query(Folder).filter(Folder.owner == user).all()
+
 @router.patch("/{folder_id}/rename")
 def rename_folder(folder_id: str, body: FolderRequest, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     f = folder_service.rename_folder(db, folder_id, body.name.strip(), user)

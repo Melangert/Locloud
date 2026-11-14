@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Edit3, Folder, FolderOpen, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Edit3, Folder, FolderOpen, Trash2 } from 'lucide-react'
 import FileItem from './FileItem'
 import { getErrorMessage, renameFolder } from '../api'
 
-export default function FileExplorer({ files, folders, compact, onOpenFolder, onDeleteFile, onDeleteFolder, onMoveFile, onRefresh, onError }) {
+export default function FileExplorer({ files, folders, compact, viewMode, onChooseMove, onOpenFolder, onDeleteFile, onDeleteFolder, onMoveFile, onRefresh, onError }) {
   const [renamingFolder, setRenamingFolder] = useState(null)
   const [folderName, setFolderName] = useState('')
   const [dragOverFolder, setDragOverFolder] = useState(null)
@@ -29,7 +29,7 @@ export default function FileExplorer({ files, folders, compact, onOpenFolder, on
   }
 
   return (
-    <div className="explorer">
+    <div className={`explorer view-${viewMode}`}>
       {folders.length > 0 && (
         <section>
           <div className="section-label">Folders <span>{folders.length}</span></div>
@@ -56,7 +56,7 @@ export default function FileExplorer({ files, folders, compact, onOpenFolder, on
                 {renamingFolder === folder.id ? (
                   <div className="folder-main">
                     <Folder size={20} />
-                    <input className="inline-input" value={folderName} onChange={(event) => setFolderName(event.target.value)} onBlur={() => saveFolderName(folder)} onKeyDown={(event) => event.key === 'Enter' && saveFolderName(folder)} autoFocus />
+                    <input className="inline-input" value={folderName} onChange={(event) => setFolderName(event.target.value)} onBlur={() => saveFolderName(folder)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') setRenamingFolder(null) }} autoFocus />
                   </div>
                 ) : (
                   <button className="folder-main" onClick={() => onOpenFolder(folder.id)}>
@@ -67,7 +67,6 @@ export default function FileExplorer({ files, folders, compact, onOpenFolder, on
                 <div className="folder-actions">
                   <button className="icon-button" title="Rename folder" onClick={() => { setRenamingFolder(folder.id); setFolderName(folder.name) }}><Edit3 size={15} /></button>
                   <button className="icon-button danger" title="Delete folder" onClick={() => onDeleteFolder(folder.id)}><Trash2 size={15} /></button>
-                  <MoreHorizontal size={15} className="muted" />
                 </div>
               </div>
             ))}
@@ -79,7 +78,7 @@ export default function FileExplorer({ files, folders, compact, onOpenFolder, on
           <div className="section-label">Files <span>{files.length}</span></div>
           <div className="file-list">
             <div className="file-list-heading"><span>Name</span><span>Size</span><span /></div>
-            {files.map((file) => <FileItem key={file.id} file={file} compact={compact} onDelete={onDeleteFile} onRefresh={onRefresh} onError={onError} />)}
+            {files.map((file) => <FileItem key={file.id} file={file} compact={compact} onMove={() => onChooseMove(file)} onDelete={onDeleteFile} onRefresh={onRefresh} onError={onError} />)}
           </div>
         </section>
       )}

@@ -22,7 +22,7 @@ async function request(path, options = {}) {
     let message = `Request failed (${response.status})`
     try {
       const body = await response.json()
-      message = body.detail || message
+      message = typeof body.detail === 'string' ? body.detail : Array.isArray(body.detail) ? body.detail.map(item => item.msg).join('; ') : message
     } catch {
       // Keep the HTTP status when the server does not return JSON.
     }
@@ -47,24 +47,29 @@ export function getFiles(folderId = null) {
   return request(`/files/${folderId ? `?folder_id=${encodeURIComponent(folderId)}` : ''}`)
 }
 
-export async function uploadFile(file, folderId = null, onProgress = () => {}) {
+export async function uploadFile(file, folderId = null, onProgress = () => {}, signal) {
+  // Keep start uncancelled so its ID is always available for cleanup.
   const { id: fileId } = await request(`/files/upload/start?filename=${encodeURIComponent(file.name)}${folderId ? `&folder_id=${encodeURIComponent(folderId)}` : ''}`, { method: 'POST' })
-  const chunkSize = 10 * 1024 * 1024
-  const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize))
-
-  for (let index = 0; index < totalChunks; index += 1) {
-    const form = new FormData()
-    form.append('file', file.slice(index * chunkSize, (index + 1) * chunkSize), file.name)
-    await request(`/files/upload/chunk?file_id=${encodeURIComponent(fileId)}&chunk_index=${index}`, {
-      method: 'POST',
-      body: form,
-    })
-    onProgress(Math.round(((index + 1) / totalChunks) * 95))
+  try {
+    signal?.throwIfAborted()
+    const chunkSize = 10 * 1024 * 1024
+    const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize))
+    for (let index = 0; index < totalChunks; index += 1) {
+      const form = new FormData()
+      form.append('file', file.slice(index * chunkSize, (index + 1) * chunkSize), file.name)
+      await request(`/files/upload/chunk?file_id=${fileId}&chunk_index=${index}`, { method: 'POST', body: form, signal })
+      onProgress(Math.round(((index + 1) / totalChunks) * 95))
+    }
+    signal?.throwIfAborted()
+    // Finalization is atomic from the user's perspective; cancellation waits for it.
+    const result = await request(`/files/upload/finish?file_id=${fileId}&total_chunks=${totalChunks}`, { method: 'POST' })
+    signal?.throwIfAborted()
+    onProgress(100)
+    return result
+  } catch (error) {
+    try { await deleteFile(fileId) } catch { throw new Error('Upload interrupted; cleanup failed. Check the connection and retry.') }
+    throw error
   }
-
-  const result = await request(`/files/upload/finish?file_id=${encodeURIComponent(fileId)}&total_chunks=${totalChunks}`, { method: 'POST' })
-  onProgress(100)
-  return result
 }
 
 export async function downloadFile(fileId, fileName) {
@@ -77,8 +82,10 @@ export async function downloadFile(fileId, fileName) {
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = fileName
+  document.body.appendChild(anchor)
   anchor.click()
-  URL.revokeObjectURL(url)
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export function deleteFile(fileId) {
@@ -123,4 +130,9 @@ export function deleteFolder(folderId) {
 
 export function getStorageUsage() {
   return request('/storage/usage')
+}
+
+export function getAllFolders() { return request('/folders/all') }
+export function changePassword(currentPassword, newPassword) {
+  return request('/auth/password', { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) })
 }

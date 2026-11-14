@@ -28,3 +28,11 @@ class File(Base):
     folder_id = Column(String, ForeignKey("folders.id"), nullable=True)
     owner     = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, nullable=False, default="ready", server_default="ready")
+
+
+class Credential(Base):
+    __tablename__ = "credentials"
+    username = Column(String, primary_key=True)
+    password_hash = Column(String, nullable=False)
+    version = Column(String, nullable=False)

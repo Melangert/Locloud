@@ -22,7 +22,7 @@ def start_upload(filename: str, folder_id: str = None, db: Session = Depends(get
     return file_service.start_chunked_upload(db, filename, folder_id, user)
 
 @router.post("/upload/chunk")
-async def upload_chunk(file_id: str, chunk_index: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: str = Depends(get_current_user)):
+def upload_chunk(file_id: str, chunk_index: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     file_service.save_chunk(db, file_id, chunk_index, file, user)
     return {"ok": True}
 
@@ -37,7 +37,7 @@ def upload_file(folder_id: str = None, file: UploadFile = File(...), db: Session
 @router.get("/download/{file_id}")
 def download_file(file_id: str, db: Session = Depends(get_db), user: str = Depends(get_current_user)):
     f = file_service.get_file(db, file_id, user)
-    if not f:
+    if not f or f.status != "ready":
         raise HTTPException(status_code=404, detail="File not found")
     return file_service.file_response(f)
 

@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=LoCloud
-Comment=Local Cloud App
-Exec=/home/kevin/Documents/Locloud/run.sh
-Icon=utilities-terminal
+Name=Locloud
+Comment=Private local file storage
+Exec=bash -lc "$HOME/Projects/Locloud/run.sh"
+Icon=folder-remote
 Terminal=true
 Type=Application
-Categories=Development;
+Categories=Utility;Network;

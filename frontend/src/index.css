@@ -182,3 +182,37 @@ button:disabled { cursor: not-allowed; opacity: .6; }
   .mobile-only { display: inline-grid; }
   .folder-grid { grid-template-columns: 1fr; }
 }
+
+/* Browsing controls stay usable on touch screens and in either view. */
+.settings-panel { overflow-y: auto; color: var(--text); }
+.settings-form, .settings-form label { display: grid; gap: 9px; }
+.settings-form { gap: 16px; }
+.settings-form input, .settings-form select, .toolbar select { min-width: 0; padding: 9px; color: var(--text); background: var(--surface-muted); border: 1px solid var(--border); border-radius: 8px; }
+.storage-path { overflow-wrap: anywhere; font-size: 12px; color: var(--muted); }
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.breadcrumbs { flex-wrap: wrap; font-size: 22px; overflow-wrap: anywhere; }
+.breadcrumb-part { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.breadcrumb-part button { overflow-wrap: anywhere; text-align: left; }
+.folder-tree { max-height: 50vh; overflow-y: auto; }
+.folder-tree svg { flex-shrink: 0; }
+.file-list-heading, .file-row { grid-template-columns: minmax(0, 1fr) 80px 140px; }
+.view-grid .file-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; border: 0; background: transparent; overflow: visible; }
+.view-grid .file-list-heading { display: none; }
+.view-grid .file-row { display: flex; flex-direction: column; align-items: stretch; gap: 16px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.view-grid .file-name-cell { width: 100%; }
+.view-grid .file-meta { text-align: left; }
+.view-grid .row-actions { justify-content: flex-start; }
+.view-list .folder-grid { grid-template-columns: 1fr; }
+.sidebar-overlay { position: fixed; inset: 0; z-index: 9; background: #10182766; border: 0; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media (min-width: 801px) { .icon-button.sidebar-close, .icon-button.menu-button { display: none; } .sidebar-overlay { display: none; } }
+@media (max-width: 560px) {
+  .content-heading { flex-direction: column; align-items: stretch; gap: 14px; }
+  .file-row { grid-template-columns: minmax(0, 1fr) 70px; }
+  .row-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .row-actions .icon-button:nth-child(1), .row-actions .icon-button:nth-child(2) { display: inline-grid; }
+  .row-actions .icon-button { width: 40px; height: 40px; }
+  .settings-panel { padding: 22px; }
+  .topbar { gap: 8px; }
+  .avatar { display: none; }
+}
